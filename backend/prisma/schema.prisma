@@ -1,0 +1,71 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  username  String
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  novels    Novel[]
+}
+
+model Novel {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 基本信息
+  title       String      @default("")   // 《{mainChar}传》
+  novel       String                     // 原著小说名
+  mainChar    String                     // 配角姓名
+  charUnder   String?                    // 用户对角色的理解
+  storyDir    String?                    // 故事走向
+  totalWC     String      @default("短篇（1-3万字）")
+  chapWC      Int         @default(1500)
+  // 状态
+  status      String      @default("setup")  // setup|analyzing|writing|completed|archived
+  // 分析结果（JSON 存储）
+  analysisTraits   String?   // JSON array
+  analysisConflict String?
+  outlines         String?   // JSON array of outline objects
+  selectedOutlineId Int?
+  // 关联
+  characters  Character[]
+  chapters    Chapter[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Character {
+  id      String  @id @default(cuid())
+  novelId String
+  novel   Novel   @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  name    String
+  role    String  @default("")
+  rel     String  @default("")
+  traits  String  @default("[]")   // JSON array
+  bg      String  @default("")
+}
+
+model Chapter {
+  id        String   @id @default(cuid())
+  novelId   String
+  novel     Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  index     Int                         // 0-based
+  title     String   @default("")
+  content   String   @default("")
+  confirmed Boolean  @default(false)
+  wordCount Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([novelId, index])
+}
