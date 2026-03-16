@@ -36,11 +36,19 @@ export const useNovelStore = defineStore('novel', () => {
 
   async function updateNovel(id, data) {
     const res = await novelApi.update(id, data)
-    current.value = { ...current.value, ...res.novel }
+    const updated = { ...res.novel }
+    // 后端在 update 接口中不会反序列化 JSON 字段，这里做一次兼容处理
+    if (typeof updated.analysisTraits === 'string') {
+      try { updated.analysisTraits = JSON.parse(updated.analysisTraits) } catch {}
+    }
+    if (typeof updated.outlines === 'string') {
+      try { updated.outlines = JSON.parse(updated.outlines) } catch {}
+    }
+    current.value = { ...current.value, ...updated }
     // sync list
     const idx = novels.value.findIndex(n => n.id === id)
-    if (idx >= 0) novels.value[idx] = { ...novels.value[idx], ...res.novel }
-    return res.novel
+    if (idx >= 0) novels.value[idx] = { ...novels.value[idx], ...updated }
+    return updated
   }
 
   async function deleteNovel(id) {

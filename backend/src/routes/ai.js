@@ -91,16 +91,24 @@ export default async function aiRoutes(fastify) {
       return reply.code(500).send({ error: `AI 分析失败: ${e.message}` })
     }
 
-    // 保存到数据库
-    await prisma.novel.update({
-      where: { id: novelId },
-      data: {
-        analysisTraits: JSON.stringify(result.traits),
-        analysisConflict: result.conflict,
-        outlines: JSON.stringify(result.outlines),
-        status: 'analyzing',
-      },
-    })
+    // 保存到数据库（再次带上 userId，防止错误 novelId 导致 P2025）
+    try {
+      await prisma.novel.update({
+        where: { id: novelId, userId },
+        data: {
+          analysisTraits: JSON.stringify(result.traits),
+          analysisConflict: result.conflict,
+          outlines: JSON.stringify(result.outlines),
+          status: 'analyzing',
+        },
+      })
+    } catch (e) {
+      // 如果记录不存在（例如前端传了错误的 novelId），返回 404 而不是抛 Prisma 异常
+      if (e.code === 'P2025') {
+        return reply.code(404).send({ error: '小说不存在或已被删除' })
+      }
+      throw e
+    }
 
     return { analysis: result }
   })

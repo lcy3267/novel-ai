@@ -56,7 +56,8 @@ export const chapterApi = {
 
 // ── AI (SSE streaming) ──
 export const aiApi = {
-  analyze: (data) => http.post('/ai/analyze', data),
+  // 角色分析可能耗时较长，单独放宽超时时间
+  analyze: (data) => http.post('/ai/analyze', data, { timeout: 120000 }),
 
   /**
    * 流式生成章节
