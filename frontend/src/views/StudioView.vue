@@ -58,7 +58,11 @@
             <div v-else>
               <div v-for="(c, i) in nv.characters" :key="c.id" class="ci">
                 <div class="cav" :style="{ background: pal(i,'18'), borderColor: pal(i,'44'), color: pal(i,'') }">{{ c.name[0] }}</div>
-                <div><div class="ci-name">{{ c.name }}</div><div class="ci-role">{{ c.role || '人物' }}</div></div>
+                <div class="ci-main">
+                  <div class="ci-name">{{ c.name }}</div>
+                  <div class="ci-role">{{ c.role || '人物' }}</div>
+                </div>
+                <button class="char-edit-btn" @click="openCharModal(c)">编辑</button>
               </div>
             </div>
             <button class="add-btn" @click="openCharModal()">＋ 添加人物</button>
@@ -335,7 +339,7 @@
     <!-- CHARACTER MODAL -->
     <div class="overlay" :class="{ open: charModal }">
       <div class="modal">
-        <div class="mhd"><div><div class="mt">添加人物</div></div><button class="mx" @click="charModal=false">✕</button></div>
+        <div class="mhd"><div><div class="mt">{{ editingCharId ? '编辑人物' : '添加人物' }}</div></div><button class="mx" @click="charModal=false">✕</button></div>
         <div class="mbody">
           <div class="frow" style="margin-bottom:14px">
             <div class="field"><div class="field-label"><span class="req-dot"></span>姓名</div><input class="fi" v-model="cm.name" placeholder="例如：贾宝玉"></div>
@@ -346,8 +350,15 @@
           <div class="field" style="margin-bottom:0"><div class="field-label">背景补充</div><textarea class="fi fta" v-model="cm.bg" style="min-height:60px"></textarea></div>
         </div>
         <div class="mfoot">
+          <button
+            v-if="editingCharId"
+            class="btn btn-ghost btn-sm btn-danger-muted"
+            @click="removeChar"
+          >
+            删除人物
+          </button>
           <button class="btn btn-ghost" @click="charModal=false">取消</button>
-          <button class="btn btn-primary" @click="addChar">添加</button>
+          <button class="btn btn-primary" @click="saveChar">{{ editingCharId ? '保存' : '添加' }}</button>
         </div>
       </div>
     </div>
@@ -370,6 +381,7 @@ const inWriteMode = ref(false)
 const analyzing   = ref(false)
 const charModal   = ref(false)
 const settingModal = ref(false)
+const editingCharId = ref('')
 
 // ── SETTING MODAL ──
 const sm = reactive({ title: '', charUnder: '', storyDir: '', totalWC: '短篇（1-3万字）', chapWC: 1500 })
@@ -614,10 +626,38 @@ const progPct    = computed(() => Math.min(100, (totalWords.value / 20000) * 100
 
 // character modal
 const cm = reactive({ name:'', role:'', rel:'', traits:'', bg:'' })
-function openCharModal() { Object.assign(cm, { name:'', role:'', rel:'', traits:'', bg:'' }); charModal.value = true }
-async function addChar() {
+function openCharModal(char = null) {
+  if (char) {
+    editingCharId.value = char.id
+    Object.assign(cm, {
+      name: char.name || '',
+      role: char.role || '',
+      rel: char.rel || '',
+      traits: Array.isArray(char.traits) ? char.traits.join('，') : '',
+      bg: char.bg || '',
+    })
+  } else {
+    editingCharId.value = ''
+    Object.assign(cm, { name:'', role:'', rel:'', traits:'', bg:'' })
+  }
+  charModal.value = true
+}
+async function saveChar() {
   if (!cm.name) return
-  await store.addCharacter({ ...cm, traits: cm.traits.split(/[,，]/).map(s=>s.trim()).filter(Boolean) })
+  const payload = { ...cm, traits: cm.traits.split(/[,，]/).map(s=>s.trim()).filter(Boolean) }
+  if (editingCharId.value) {
+    await store.updateCharacter(editingCharId.value, payload)
+  } else {
+    await store.addCharacter(payload)
+  }
+  editingCharId.value = ''
+  charModal.value = false
+}
+async function removeChar() {
+  if (!editingCharId.value) return
+  if (!window.confirm('确认删除该人物？')) return
+  await store.deleteCharacter(editingCharId.value)
+  editingCharId.value = ''
   charModal.value = false
 }
 
@@ -674,8 +714,13 @@ function exportAll() {
 .prog-fill  { height: 100%; background: var(--rose-m); border-radius: 2px; transition: width .5s; }
 .ci { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: var(--r); margin-bottom: 2px; }
 .cav { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; border: 1px solid; }
+.ci-main { flex: 1; min-width: 0; }
 .ci-name { font-size: 13px; color: var(--text); font-weight: 500; }
 .ci-role { font-size: 11px; color: var(--muted); }
+.char-edit-btn { border: none; background: none; color: var(--muted); font-size: 11px; cursor: pointer; padding: 2px 4px; }
+.char-edit-btn:hover { color: var(--rose); }
+.btn-danger-muted { color: #b97d7d; }
+.btn-danger-muted:hover { color: #a14f4f; }
 .cr { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: var(--r); cursor: pointer; margin-bottom: 2px; transition: background .15s; }
 .cr:hover { background: var(--bg); }
 .cr.cur   { background: var(--rose-l); }

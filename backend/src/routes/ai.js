@@ -115,58 +115,6 @@ async function extractChapterMainPlot(llm, content) {
   return trimTo(raw, 50)
 }
 
-async function extractRelatedCharactersForFirstChapter(llm, novelName, mainChar, content) {
-  const system = '你是人物提炼助手。请从正文中提炼与主角强相关的人物，严格输出JSON数组，不要markdown。'
-  const user = `
-【原著】${novelName}
-【本书主角】${mainChar}
-【章节正文】
-${content.slice(0, 4500)}
-
-请提炼最多3个与主角关系最强的人物（不要包含本书主角本人），按格式输出：
-[
-  {"name":"","role":"","rel":"","traits":["",""],"bg":""}
-]
-要求：
-- bg 仅写与本书主角相关情节，最多300字
-- traits 最多4个短词
-- name 不能为空
-`.trim()
-  const raw = await llm.complete(system, user, 800)
-  const parsed = parseJsonSafely(raw, [])
-  if (!Array.isArray(parsed)) return []
-  return parsed
-    .filter(p => p && typeof p.name === 'string' && p.name.trim())
-    .map(p => ({
-      name: trimTo(p.name, 32),
-      role: trimTo(p.role || '', 64),
-      rel: trimTo(p.rel || '', 120),
-      traits: Array.isArray(p.traits) ? p.traits.map(t => trimTo(t, 16)).filter(Boolean).slice(0, 4) : [],
-      bg: trimTo(p.bg || '', 300),
-    }))
-    .filter(p => p.name !== mainChar)
-    .slice(0, 3)
-}
-
-async function upsertAutoCharacters(prisma, novelId, mainChar, existingChars, extractedChars) {
-  const existingNameSet = new Set(existingChars.map(c => c.name.trim()))
-  existingNameSet.add(mainChar)
-  for (const ch of extractedChars) {
-    if (existingNameSet.has(ch.name)) continue
-    await prisma.character.create({
-      data: {
-        novelId,
-        name: ch.name,
-        role: ch.role || '',
-        rel: ch.rel || '',
-        traits: JSON.stringify(ch.traits || []),
-        bg: ch.bg || '',
-      },
-    })
-    existingNameSet.add(ch.name)
-  }
-}
-
 function setupSSE(reply) {
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -295,14 +243,6 @@ export default async function aiRoutes(fastify) {
           ? `请创作第一章，目标约1500字（严格控制在1300~1700字）。额外要求：${extraInstruction}`
           : '请创作第一章，目标约1500字（严格控制在1300~1700字），建立故事基调并推动核心冲突。'
         return { system, userMsg }
-      },
-      afterPersist: async ({ prisma, llm, novel, content }) => {
-        const extracted = await extractRelatedCharactersForFirstChapter(
-          llm, novel.novel, novel.mainChar, content
-        )
-        if (!extracted.length) return
-        const freshChars = await prisma.character.findMany({ where: { novelId: novel.id } })
-        await upsertAutoCharacters(prisma, novel.id, novel.mainChar, freshChars, extracted)
       },
     })
   })

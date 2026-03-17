@@ -69,6 +69,13 @@ export const useNovelStore = defineStore('novel', () => {
     current.value.characters.push(res.character)
     return res.character
   }
+  async function updateCharacter(charId, data) {
+    const res = await novelApi.updateChar(current.value.id, charId, data)
+    current.value.characters = current.value.characters.map(c => (
+      c.id === charId ? res.character : c
+    ))
+    return res.character
+  }
   async function deleteCharacter(charId) {
     await novelApi.deleteChar(current.value.id, charId)
     current.value.characters = current.value.characters.filter(c => c.id !== charId)
@@ -182,7 +189,7 @@ export const useNovelStore = defineStore('novel', () => {
     novels, total,
     current, chapters, curIdx, generating,
     fetchNovels, createNovel, updateNovel, deleteNovel, archiveNovel,
-    loadNovel, addCharacter, deleteCharacter,
+    loadNovel, addCharacter, updateCharacter, deleteCharacter,
     analyze, generateChapter, editChapter, stopGenerate,
     confirmChapter, saveChapter, deleteChapter, reset,
   }

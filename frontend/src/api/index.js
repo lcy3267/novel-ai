@@ -42,6 +42,7 @@ export const novelApi = {
   delete:     (id)     => http.delete(`/novels/${id}`),
   archive:    (id)     => http.put(`/novels/${id}/archive`),
   addChar:    (id, d)  => http.post(`/novels/${id}/characters`, d),
+  updateChar: (id, cid, d) => http.put(`/novels/${id}/characters/${cid}`, d),
   deleteChar: (id, cid)=> http.delete(`/novels/${id}/characters/${cid}`),
 }
 

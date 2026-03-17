@@ -1,4 +1,60 @@
 import { authenticate } from '../middleware/auth.js'
+import { getLLM } from '../plugins/llm/index.js'
+
+function parseJsonSafely(raw, fallback) {
+  try {
+    return JSON.parse(String(raw).replace(/```json|```/g, '').trim())
+  } catch {
+    return fallback
+  }
+}
+
+function trimTo(str, max) {
+  const val = String(str || '').replace(/\s+/g, ' ').trim()
+  return val.length > max ? val.slice(0, max) : val
+}
+
+function isMainCharRelated(mainChar, rel, bg) {
+  const text = `${rel || ''} ${bg || ''}`
+  return text.includes(mainChar) || text.includes('本书主角') || text.includes('该配角')
+}
+
+async function extractOriginalCharacters(llm, novel, mainChar, charUnder, storyDir) {
+  const system = '你是人物提炼助手。任务是围绕“本书主角（原著配角）”提炼人物，严格返回JSON数组，不要markdown。'
+  const user = `
+【原著】${novel}
+【本书主角（原著配角）】${mainChar}
+【用户理解】${charUnder || '暂无'}
+【故事走向】${storyDir || '暂无'}
+
+请提炼最多3个与“本书主角 ${mainChar}”有直接关系或冲突的人物（不含本书主角），输出格式：
+[
+  {"name":"","role":"","rel":"","traits":["",""],"bg":""}
+]
+硬性要求：
+- 只保留与“本书主角 ${mainChar}”直接相关的人物，不要按原著主角视角选人
+- 如果某人物只与原著主角相关、与 ${mainChar} 关系弱或无关，禁止输出
+- rel 必须明确写出该人物与 ${mainChar} 的关系（建议包含“${mainChar}”姓名）
+- bg 仅写该人物与本书主角相关情节，不超过300字
+- traits 最多4个短词
+- name 必填
+`.trim()
+
+  const raw = await llm.complete(system, user, 800)
+  const parsed = parseJsonSafely(raw, [])
+  if (!Array.isArray(parsed)) return []
+  return parsed
+    .filter(p => p && typeof p.name === 'string' && p.name.trim())
+    .map(p => ({
+      name: trimTo(p.name, 32),
+      role: trimTo(p.role || '', 64),
+      rel: trimTo(p.rel || '', 120),
+      traits: Array.isArray(p.traits) ? p.traits.map(t => trimTo(t, 16)).filter(Boolean).slice(0, 4) : [],
+      bg: trimTo(p.bg || '', 300),
+    }))
+    .filter(p => p.name && p.name !== mainChar && isMainCharRelated(mainChar, p.rel, p.bg))
+    .slice(0, 3)
+}
 
 export default async function novelRoutes(fastify) {
   const { prisma } = fastify
@@ -82,7 +138,38 @@ export default async function novelRoutes(fastify) {
       },
       include: { characters: true },
     })
-    return { novel: created }
+
+    // 自动提炼原著关键人物（<=3），并写入人物表
+    try {
+      const llm = getLLM()
+      const extracted = await extractOriginalCharacters(llm, novel, mainChar, charUnder, storyDir)
+      if (extracted.length) {
+        const existingNames = new Set(created.characters.map(c => c.name.trim()))
+        existingNames.add(mainChar)
+        for (const ch of extracted) {
+          if (existingNames.has(ch.name)) continue
+          await prisma.character.create({
+            data: {
+              novelId: created.id,
+              name: ch.name,
+              role: ch.role || '',
+              rel: ch.rel || '',
+              traits: JSON.stringify(ch.traits || []),
+              bg: ch.bg || '',
+            },
+          })
+          existingNames.add(ch.name)
+        }
+      }
+    } catch (e) {
+      fastify.log.warn({ err: e }, '自动提炼原著人物失败，已跳过')
+    }
+
+    const latest = await prisma.novel.findUnique({
+      where: { id: created.id },
+      include: { characters: true },
+    })
+    return { novel: latest }
   })
 
   // ── 详情 ──
@@ -169,6 +256,32 @@ export default async function novelRoutes(fastify) {
       data: { novelId: id, name, role: role || '', rel: rel || '', traits: JSON.stringify(traits || []), bg: bg || '' },
     })
     return { character: { ...char, traits: JSON.parse(char.traits) } }
+  })
+
+  // ── 编辑人物 ──
+  fastify.put('/novels/:id/characters/:charId', { preHandler: [authenticate] }, async (request, reply) => {
+    const { id, charId } = request.params
+    const userId = request.user.userId
+    const novel = await prisma.novel.findFirst({ where: { id, userId } })
+    if (!novel) return reply.code(404).send({ error: '小说不存在' })
+
+    const existing = await prisma.character.findFirst({ where: { id: charId, novelId: id } })
+    if (!existing) return reply.code(404).send({ error: '人物不存在' })
+
+    const { name, role, rel, traits, bg } = request.body || {}
+    if (!name) return reply.code(400).send({ error: '人物姓名必填' })
+
+    const updated = await prisma.character.update({
+      where: { id: charId },
+      data: {
+        name,
+        role: role || '',
+        rel: rel || '',
+        traits: JSON.stringify(traits || []),
+        bg: bg || '',
+      },
+    })
+    return { character: { ...updated, traits: JSON.parse(updated.traits || '[]') } }
   })
 
   // ── 删除人物 ──
