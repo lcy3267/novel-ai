@@ -21,6 +21,10 @@ export const useNovelStore = defineStore('novel', () => {
   const generating = ref(false)
   let   _stopStream = null
 
+  function stripMainPlotMarker(text = '') {
+    return String(text).replace(/\n?【本章主要情节】[^\n\r]*/g, '').trim()
+  }
+
   async function loadNovel(id) {
     const res = await novelApi.get(id)
     current.value  = res.novel
@@ -111,6 +115,7 @@ export const useNovelStore = defineStore('novel', () => {
         (meta) => {
           const c = chapters.value.find(c => c.index === chapIndex)
           if (c) {
+            c.content = stripMainPlotMarker(c.content)
             // extract title from content
             const m = c.content.match(/【(.+?)】/)
             if (m) { c.title = m[1]; c.content = c.content.replace(/【.+?】/, '').trim() }
@@ -144,6 +149,8 @@ export const useNovelStore = defineStore('novel', () => {
           if (ch) ch.content += text
         },
         (meta) => {
+          const ch = chapters.value.find(c => c.index === chapIndex)
+          if (ch) ch.content = stripMainPlotMarker(ch.content)
           generating.value = false
           _stopStream = null
           resolve(meta)

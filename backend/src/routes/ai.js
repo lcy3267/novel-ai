@@ -28,6 +28,17 @@ function extractChapterTitleAndContent(fullText, chapIndex) {
   return { title, content }
 }
 
+function extractMainPlotFromGeneratedText(content) {
+  const marker = /(?:\n|^)【本章主要情节】\s*([^\n\r]{1,120})/g
+  let match
+  let last = null
+  while ((match = marker.exec(content)) !== null) last = match
+  if (!last) return { content: content.trim(), mainPlot: '' }
+  const rawPlot = trimTo(last[1] || '', 50)
+  const cleaned = content.slice(0, last.index).trim()
+  return { content: cleaned, mainPlot: rawPlot }
+}
+
 // ── Prompt 构建器（与前端 demo 保持一致的逻辑） ──
 function buildAnalyzePrompt(novel, mainChar, charUnder, storyDir, totalWC, chapWC, chars) {
   const charDesc = chars.map(c => `${c.name}（${c.role}，${c.rel}）`).join('；') || '无'
@@ -76,7 +87,11 @@ ${charLines ? `【相关人物】\n${charLines}` : ''}
 - 不堆砌形容词，段落间有节奏
 - 段落之间空一行，不要首行缩进符号
 - 请严格把正文总字数控制在目标字数的±200字以内
-请第一行输出章节标题（格式：【标题】），标题后直接开始正文，无需额外空行。`
+输出格式必须严格遵守：
+1) 第一行输出章节标题（格式：【标题】）
+2) 然后输出正文
+3) 最后一行单独输出：` + '`【本章主要情节】<不超过50字>`' + `
+除上述内容外不要输出解释。`
 }
 
 function buildNextChapterSystem(mainChar, charUnder, storyDir, keywords, chars, recentMainPlots, prevTail, chapWC) {
@@ -96,7 +111,7 @@ function buildNextChapterSystem(mainChar, charUnder, storyDir, keywords, chars, 
 ${charLines ? `【相关人物】\n${charLines}` : ''}
 【近10章主要情节】
 ${plotLines}
-【上一章结尾100字】
+【上一章结尾150字】
 ${prevTail || '暂无'}
 
 【字数要求】本章目标约${chapWC}字
@@ -105,14 +120,11 @@ ${prevTail || '暂无'}
 - 情节推进清晰，避免重复叙述
 - 段落之间空一行，不要首行缩进符号
 - 请严格把正文总字数控制在目标字数的±200字以内
-请第一行输出章节标题（格式：【标题】），标题后直接开始正文，无需额外空行。`
-}
-
-async function extractChapterMainPlot(llm, content) {
-  const system = '你是小说编辑。请提炼本章主要情节，限制在50字以内，只返回一句纯文本，不要标点装饰，不要解释。'
-  const user = `请提炼以下章节的主要情节（<=50字）：\n\n${content.slice(0, 3000)}`
-  const raw = await llm.complete(system, user, 120)
-  return trimTo(raw, 50)
+输出格式必须严格遵守：
+1) 第一行输出章节标题（格式：【标题】）
+2) 然后输出正文
+3) 最后一行单独输出：` + '`【本章主要情节】<不超过50字>`' + `
+除上述内容外不要输出解释。`
 }
 
 function setupSSE(reply) {
@@ -206,9 +218,9 @@ export default async function aiRoutes(fastify) {
         send({ type: 'chunk', text: chunk })
       })
 
-      const { title, content } = extractChapterTitleAndContent(fullText, chapIndex)
+      const { title, content: rawContent } = extractChapterTitleAndContent(fullText, chapIndex)
+      const { content, mainPlot } = extractMainPlotFromGeneratedText(rawContent)
       const wordCount = content.replace(/\s/g, '').length
-      const mainPlot = trimTo(await extractChapterMainPlot(llm, content), 50)
 
       await prisma.chapter.upsert({
         where: { novelId_index: { novelId, index: chapIndex } },
@@ -263,10 +275,10 @@ export default async function aiRoutes(fastify) {
           .sort((a, b) => b.index - a.index)
           .slice(0, 10)
           .reverse()
-          .map(c => trimTo(c.mainPlot || '', 50))
+          .map(c => trimTo(c.mainPlot || c.content || '', 50))
           .filter(Boolean)
         const prevChap = novel.chapters.find(c => c.index === chapIndex - 1)
-        const prevTail = (prevChap?.content || '').slice(-100)
+        const prevTail = (prevChap?.content || '').slice(-150)
         const system = buildNextChapterSystem(
           novel.mainChar,
           novel.charUnder,
@@ -313,18 +325,18 @@ export default async function aiRoutes(fastify) {
         send({ type: 'chunk', text: chunk })
       })
 
-      const mainPlot = trimTo(await extractChapterMainPlot(llm, fullText), 50)
+      const { mainPlot, content } = extractMainPlotFromGeneratedText(fullText)
       await prisma.chapter.update({
         where: { novelId_index: { novelId, index: chapIndex } },
         data: {
-          content: fullText,
+          content,
           mainPlot,
-          wordCount: fullText.replace(/\s/g, '').length,
+          wordCount: content.replace(/\s/g, '').length,
           confirmed: false,
         },
       })
 
-      send({ type: 'done', wordCount: fullText.replace(/\s/g, '').length, mainPlot })
+      send({ type: 'done', wordCount: content.replace(/\s/g, '').length, mainPlot })
     } catch (e) {
       send({ type: 'error', message: e.message })
     } finally {

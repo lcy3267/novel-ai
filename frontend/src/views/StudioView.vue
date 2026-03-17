@@ -282,7 +282,7 @@
               <button class="btn btn-outline btn-sm" @click="saveCurrentChap" :disabled="store.generating || !curChap">
                 保存
               </button>
-              <button v-if="!curChap?.confirmed" class="btn btn-primary btn-sm" @click="generateNextChap" :disabled="store.generating || !curChap">
+              <button v-if="curChap && store.curIdx === latestChapIdx" class="btn btn-primary btn-sm" @click="generateNextChap" :disabled="store.generating || !curChap">
                 生成第 {{ store.curIdx + 2 }} 章 →
               </button>
             </div>
