@@ -94,13 +94,16 @@ ${charLines ? `【相关人物】\n${charLines}` : ''}
 除上述内容外不要输出解释。`
 }
 
-function buildNextChapterSystem(mainChar, charUnder, storyDir, keywords, chars, recentMainPlots, prevTail, chapWC) {
+function buildNextChapterSystem(mainChar, charUnder, storyDir, keywords, chars, recentMainPlots, recentChapterContents, chapWC) {
   const charLines = chars.map(c =>
     `${c.name}（${c.role}）：${c.rel || ''}${c.traits?.length ? '，性格：' + c.traits.join('、') : ''}${c.bg ? '，背景：' + c.bg : ''}`
   ).join('\n')
   const plotLines = recentMainPlots.length
     ? recentMainPlots.map((p, i) => `第${i + 1}条：${p}`).join('\n')
     : '暂无'
+  const recentText = (recentChapterContents || '').trim() || '暂无'
+
+  console.log('---------章节内容-------', recentChapterContents.length)
 
   return `你是顶级中文小说创作者，专注为配角书写完整故事。
 
@@ -111,8 +114,8 @@ function buildNextChapterSystem(mainChar, charUnder, storyDir, keywords, chars, 
 ${charLines ? `【相关人物】\n${charLines}` : ''}
 【近10章主要情节】
 ${plotLines}
-【上一章结尾150字】
-${prevTail || '暂无'}
+【近3章全部内容】
+${recentText}
 
 【字数要求】本章目标约${chapWC}字
 【写作规范】
@@ -277,8 +280,17 @@ export default async function aiRoutes(fastify) {
           .reverse()
           .map(c => trimTo(c.mainPlot || c.content || '', 50))
           .filter(Boolean)
-        const prevChap = novel.chapters.find(c => c.index === chapIndex - 1)
-        const prevTail = (prevChap?.content || '').slice(-150)
+        const recent3 = novel.chapters
+          .filter(c => c.index < chapIndex)
+          .sort((a, b) => b.index - a.index)
+          .slice(0, 3)
+          .reverse()
+        const recentChapterContents = recent3.map(c => {
+          const t = (c.title || '').trim() || `第${c.index + 1}章`
+          const body = String(c.content || '').trim()
+          return `【第${c.index + 1}章 ${t}】\n${body}`
+        }).join('\n\n')
+
         const system = buildNextChapterSystem(
           novel.mainChar,
           novel.charUnder,
@@ -286,7 +298,7 @@ export default async function aiRoutes(fastify) {
           selectedOutline?.keywords || [],
           chars,
           recentMainPlots,
-          prevTail,
+          recentChapterContents,
           novel.chapWC
         )
         const minWC = Math.max(200, novel.chapWC - 200)

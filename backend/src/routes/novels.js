@@ -116,6 +116,12 @@ export default async function novelRoutes(fastify) {
       return reply.code(400).send({ error: '小说名称和配角姓名为必填项' })
     }
 
+    // 故事走向：新建时也必须为非空
+    const storyDirVal = String(storyDir || '').trim()
+    if (!storyDirVal) {
+      return reply.code(400).send({ error: '故事走向必填' })
+    }
+
     const created = await prisma.novel.create({
       data: {
         userId,
@@ -123,7 +129,7 @@ export default async function novelRoutes(fastify) {
         mainChar,
         title: `${mainChar}传`,
         charUnder: charUnder || '',
-        storyDir: storyDir || '',
+        storyDir: storyDirVal,
         totalWC: totalWC || '短篇（1-3万字）',
         chapWC: chapWC || 1500,
         characters: {
@@ -206,6 +212,12 @@ export default async function novelRoutes(fastify) {
 
     const existing = await prisma.novel.findFirst({ where: { id, userId } })
     if (!existing) return reply.code(404).send({ error: '小说不存在' })
+
+    // 故事走向：一旦用户提交修改，则必须为非空
+    if (Object.prototype.hasOwnProperty.call(request.body || {}, 'storyDir')) {
+      const v = String(request.body.storyDir || '').trim()
+      if (!v) return reply.code(400).send({ error: '故事走向改完必填' })
+    }
 
     const data = {}
     for (const key of allowed) {
