@@ -62,6 +62,7 @@ model Chapter {
   index     Int                         // 0-based
   title     String   @default("")
   content   String   @default("")
+  mainPlot  String   @default("")       // 本章主要情节（<=50字）
   confirmed Boolean  @default(false)
   wordCount Int      @default(0)
   createdAt DateTime @default(now())

@@ -25,18 +25,17 @@
       </div>
     </nav>
 
+
     <!-- ══ IMMERSIVE FLOAT ══ -->
     <div v-if="inWriteMode" class="float-ctrl">
-      <span class="float-title serif">《{{ nv.mainChar }}传》</span>
-      <button class="btn btn-ghost btn-sm" @click="exportAll">导出</button>
-      <button class="btn btn-outline btn-sm" @click="doSave">保存</button>
+      <button class="btn btn-ghost btn-sm" @click="exportAll">导出正文</button>
       <button class="btn btn-ghost btn-sm" @click="router.push('/novels')">返回列表</button>
     </div>
 
     <!-- ══ LAYOUT ══ -->
     <div class="studio-body">
-      <!-- sidebar (hidden in write mode) -->
-      <aside v-if="!inWriteMode" class="sb">
+      <!-- sidebar -->
+      <aside class="sb">
         <div class="sb-s">
           <div class="sb-lbl">当前项目</div>
           <div class="proj">
@@ -50,6 +49,7 @@
               <div class="prog-bar"><div class="prog-fill" :style="{ width: progPct + '%' }"></div></div>
             </div>
           </div>
+          <button v-if="nv.id" class="add-btn" style="margin-top:10px" @click="openSettingModal">⚙ 基本设定</button>
         </div>
         <div class="sb-body">
           <div class="sb-s">
@@ -87,7 +87,7 @@
       <main class="smain" :class="{ immersive: inWriteMode }">
 
         <!-- ── STEP 1 ── -->
-        <div v-if="step === 1" class="wp">
+        <div v-if="step === 1 && !inWriteMode" class="wp">
           <div class="hq">
             <div class="hq-t serif">「你喜欢的那个配角，<em>值得拥有一个完整的故事。</em>」</div>
           </div>
@@ -137,7 +137,7 @@
         </div>
 
         <!-- ── STEP 2 ── -->
-        <div v-if="step === 2" class="wp">
+        <div v-if="step === 2 && !inWriteMode" class="wp">
           <div class="eye">Step 02&ensp;添加人物</div>
           <div class="wt serif">故事里还有谁？</div>
           <div class="ws2" style="margin-bottom:22px">添加相关人物（<strong style="color:var(--rose)">选填</strong>，可随时补充）。</div>
@@ -168,7 +168,7 @@
         </div>
 
         <!-- ── STEP 3 ── -->
-        <div v-if="step === 3" class="wp">
+        <div v-if="step === 3 && !inWriteMode" class="wp">
           <div class="eye">Step 03&ensp;选择脉络</div>
           <div class="wt serif">你想讲哪一个故事？</div>
           <div class="ws2" style="margin-bottom:24px">AI 正在分析 <strong style="color:var(--rose)">{{ nv.mainChar }}</strong> 在原著中的性格与背景，生成多条故事脉络。</div>
@@ -263,14 +263,22 @@
               <button class="btn btn-outline btn-sm" :class="{ 'btn-ea': wEditing }" @click="toggleWEdit" :disabled="store.generating">
                 {{ wEditing ? '退出编辑' : '编辑' }}
               </button>
-              <button class="btn btn-ghost btn-sm" @click="regenChap(store.curIdx)" :disabled="store.generating">重新生成</button>
+              <button v-if="!curChap?.confirmed" class="btn btn-ghost btn-sm" @click="regenChap(store.curIdx)" :disabled="store.generating">重新生成</button>
               <span class="wc-lbl">{{ wChapWC }} 字</span>
             </div>
             <div class="w-abar-r">
-              <button v-if="!store.generating && !curChap?.confirmed" class="btn btn-primary btn-sm" @click="saveAndNext">
-                保存，生成下一章 →
+              <button
+                v-if="curChap && store.curIdx === latestChapIdx"
+                class="btn btn-ghost btn-sm"
+                @click="deleteLatestChapter"
+                :disabled="store.generating"
+              >
+                删除本章
               </button>
-              <button v-else-if="curChap?.confirmed" class="btn btn-sage btn-sm" @click="genNextChap">
+              <button class="btn btn-outline btn-sm" @click="saveCurrentChap" :disabled="store.generating || !curChap">
+                保存
+              </button>
+              <button v-if="!curChap?.confirmed" class="btn btn-primary btn-sm" @click="generateNextChap" :disabled="store.generating || !curChap">
                 生成第 {{ store.curIdx + 2 }} 章 →
               </button>
             </div>
@@ -278,6 +286,50 @@
         </div>
 
       </main>
+    </div>
+
+    <!-- SETTING MODAL -->
+    <div class="overlay" :class="{ open: settingModal }">
+      <div class="modal">
+        <div class="mhd">
+          <div><div class="mt">基本设定</div></div>
+          <button class="mx" @click="settingModal=false">✕</button>
+        </div>
+        <div class="mbody">
+          <div class="field">
+            <div class="field-label">小说名称</div>
+            <input class="fi" v-model="sm.title" placeholder="例如：历飞羽传">
+          </div>
+          <div class="field">
+            <div class="field-label">你对这个角色的理解</div>
+            <textarea class="fi fta" v-model="sm.charUnder" placeholder="例如：坚韧、讲义气、果断决绝……" style="min-height:72px"></textarea>
+          </div>
+          <div class="field">
+            <div class="field-label">你希望的故事走向</div>
+            <textarea class="fi fta" v-model="sm.storyDir" placeholder="例如：从主角的出生背景写起……" style="min-height:72px"></textarea>
+          </div>
+          <div class="field">
+            <div class="field-label">总体字数目标</div>
+            <div class="wg3">
+              <div v-for="t in totalWCOpts" :key="t.val" class="wc" :class="{ sel: sm.totalWC === t.label }" @click="sm.totalWC = t.label">
+                <div class="wv">{{ t.val }}</div><div class="wd">{{ t.desc }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <div class="field-label">单章字数</div>
+            <div class="wg4">
+              <div v-for="c in chapWCOpts" :key="c" class="wc" :class="{ sel: sm.chapWC === c }" @click="sm.chapWC = c">
+                <div class="wv">{{ c }}字</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mfoot">
+          <button class="btn btn-ghost" @click="settingModal=false">取消</button>
+          <button class="btn btn-primary" @click="saveSettings">保存设定</button>
+        </div>
+      </div>
     </div>
 
     <!-- CHARACTER MODAL -->
@@ -313,10 +365,35 @@ const route  = useRoute()
 const store  = useNovelStore()
 const toast  = inject('toast')
 
-const step       = ref(1)
+const step        = ref(1)
 const inWriteMode = ref(false)
-const analyzing  = ref(false)
-const charModal  = ref(false)
+const analyzing   = ref(false)
+const charModal   = ref(false)
+const settingModal = ref(false)
+
+// ── SETTING MODAL ──
+const sm = reactive({ title: '', charUnder: '', storyDir: '', totalWC: '短篇（1-3万字）', chapWC: 1500 })
+function openSettingModal() {
+  Object.assign(sm, {
+    title:    nv.value.title    || '',
+    charUnder: nv.value.charUnder || '',
+    storyDir:  nv.value.storyDir  || '',
+    totalWC:   nv.value.totalWC   || '短篇（1-3万字）',
+    chapWC:    nv.value.chapWC    || 1500,
+  })
+  settingModal.value = true
+}
+async function saveSettings() {
+  await store.updateNovel(nv.value.id, {
+    title:    sm.title,
+    charUnder: sm.charUnder,
+    storyDir:  sm.storyDir,
+    totalWC:   sm.totalWC,
+    chapWC:    sm.chapWC,
+  })
+  settingModal.value = false
+  toast('设定已保存 ✓')
+}
 
 const nv = computed(() => store.current || {})
 
@@ -413,9 +490,6 @@ async function genChap(idx) {
   } catch(e) { toast(e.message, 'error') }
 }
 
-// Patch store to stream into streamText
-const origGen = store.generateChapter.bind(store)
-
 function toggleP4Edit() {
   p4Editing.value = !p4Editing.value
   if (!p4Editing.value && p4PaperEl.value) {
@@ -449,6 +523,10 @@ const wChapTitle = ref('')
 const wEditedContent = ref('')
 
 const curChap = computed(() => store.chapters[store.curIdx])
+const latestChapIdx = computed(() => {
+  if (!store.chapters.length) return -1
+  return Math.max(...store.chapters.map(c => c.index ?? -1))
+})
 const wFinalParas = computed(() => {
   const c = curChap.value?.content || ''
   return c.split(/\n+/).filter(s=>s.trim())
@@ -457,8 +535,11 @@ const wChapWC = computed(() => (curChap.value?.content || '').replace(/\s/g,'').
 
 function enterWriteMode() {
   inWriteMode.value = true
-  store.curIdx = 0
-  wChapTitle.value = nv.value.chapters?.[0]?.title || ''
+  const latestIdx = store.chapters.length
+    ? Math.max(...store.chapters.map(c => c.index ?? 0))
+    : 0
+  store.curIdx = latestIdx
+  wChapTitle.value = store.chapters[latestIdx]?.title || ''
   streamText.value = ''
 }
 function jumpChap(i) {
@@ -477,10 +558,30 @@ function toggleWEdit() {
   if (wEditing.value) nextTick(() => wPaperEl.value?.focus())
 }
 function onWInput() {}
-async function saveAndNext() {
+async function saveCurrentChap() {
+  if (wEditing.value) toggleWEdit()
+  const content = wPaperEl.value?.innerText || curChap.value?.content || ''
+  await store.saveChapter(store.curIdx, { title: wChapTitle.value, content })
+  toast('已保存 ✓')
+}
+async function generateNextChap() {
   if (wEditing.value) toggleWEdit()
   await store.confirmChapter(store.curIdx)
   await genNextChap()
+}
+async function deleteLatestChapter() {
+  if (!curChap.value) return
+  if (store.curIdx !== latestChapIdx.value) {
+    toast('只能删除最新章节', 'error')
+    return
+  }
+  if (!window.confirm(`确认删除第 ${store.curIdx + 1} 章？`)) return
+  await store.deleteChapter(store.curIdx)
+  const nextLatest = store.chapters.length
+    ? Math.max(...store.chapters.map(c => c.index ?? 0))
+    : 0
+  store.curIdx = nextLatest
+  wChapTitle.value = store.chapters[nextLatest]?.title || ''
 }
 async function genNextChap() {
   const nextIdx = store.curIdx + 1
@@ -651,7 +752,7 @@ function exportAll() {
 .btn-ea { background: var(--rose-l); border-color: var(--rose-m); color: var(--rose); }
 
 /* write mode */
-.write-main { max-width: 780px; margin: 0 auto; padding: 52px 60px; }
+.write-main { max-width: 980px; margin: 0 auto; padding: 52px 60px; }
 .w-chap-hd  { margin-bottom: 22px; }
 .w-chap-lbl { font-size: 11px; color: var(--rose); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 6px; }
 .w-chap-ti  { font-size: 22px; font-weight: 700; color: var(--text); border: none; background: transparent; outline: none; width: 100%; line-height: 1.3; }

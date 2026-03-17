@@ -108,6 +108,7 @@ export const useNovelStore = defineStore('novel', () => {
             const m = c.content.match(/【(.+?)】/)
             if (m) { c.title = m[1]; c.content = c.content.replace(/【.+?】/, '').trim() }
             c.wordCount = meta.wordCount
+            if (meta.mainPlot) c.mainPlot = meta.mainPlot
           }
           generating.value = false
           _stopStream = null
@@ -165,6 +166,11 @@ export const useNovelStore = defineStore('novel', () => {
     if (c) Object.assign(c, data)
   }
 
+  async function deleteChapter(chapIndex) {
+    await chapterApi.delete(current.value.id, chapIndex)
+    chapters.value = chapters.value.filter(c => c.index !== chapIndex)
+  }
+
   function reset() {
     current.value  = null
     chapters.value = []
@@ -178,6 +184,6 @@ export const useNovelStore = defineStore('novel', () => {
     fetchNovels, createNovel, updateNovel, deleteNovel, archiveNovel,
     loadNovel, addCharacter, deleteCharacter,
     analyze, generateChapter, editChapter, stopGenerate,
-    confirmChapter, saveChapter, reset,
+    confirmChapter, saveChapter, deleteChapter, reset,
   }
 })

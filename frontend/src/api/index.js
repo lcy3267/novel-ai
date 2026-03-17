@@ -65,7 +65,18 @@ export const aiApi = {
    * returns: EventSource cleanup fn
    */
   generate(data, onChunk, onDone, onError) {
-    return _sse('/ai/generate', data, onChunk, onDone, onError)
+    if (Number(data?.chapIndex) === 0) {
+      return _sse(
+        '/ai/generate-first-chapter',
+        { novelId: data.novelId, extraInstruction: data.extraInstruction || '' },
+        onChunk, onDone, onError
+      )
+    }
+    return _sse(
+      '/ai/generate-next-chapter',
+      { novelId: data.novelId, chapIndex: data.chapIndex, extraInstruction: data.extraInstruction || '' },
+      onChunk, onDone, onError
+    )
   },
 
   edit(data, onChunk, onDone, onError) {
