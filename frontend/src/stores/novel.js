@@ -29,6 +29,8 @@ export const useNovelStore = defineStore('novel', () => {
     const res = await novelApi.get(id)
     current.value  = res.novel
     chapters.value = res.novel.chapters || []
+    // 保持 sidebar 使用的 nv.chapters 与 chapters 引用一致，方便后续同步更新
+    if (current.value) current.value.chapters = chapters.value
     return res.novel
   }
 
@@ -182,7 +184,12 @@ export const useNovelStore = defineStore('novel', () => {
 
   async function deleteChapter(chapIndex) {
     await chapterApi.delete(current.value.id, chapIndex)
-    chapters.value = chapters.value.filter(c => c.index !== chapIndex)
+    const idx = chapters.value.findIndex(c => c.index === chapIndex)
+    if (idx >= 0) chapters.value.splice(idx, 1)
+    if (current.value && Array.isArray(current.value.chapters)) {
+      const i2 = current.value.chapters.findIndex(c => c.index === chapIndex)
+      if (i2 >= 0) current.value.chapters.splice(i2, 1)
+    }
   }
 
   function reset() {
